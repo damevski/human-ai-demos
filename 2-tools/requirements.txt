@@ -1,0 +1,9 @@
+streamlit==1.28.1
+langchain==0.3
+langgraph==0.3
+langgraph-prebuilt
+langchain-openai
+langchain-community
+tavily-python
+openai
+python-dotenv==1.0.0
