@@ -3,25 +3,24 @@
 Quick start script for the Grad Director AI Chatbot (LangGraph version)
 """
 import os
-from typing import Annotated, TypedDict
+# from typing import Annotated, TypedDict
 
 import streamlit as st
 from dotenv import load_dotenv
-
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-
 from langchain_core.chat_history import InMemoryChatMessageHistory
 
 
 # LangGraph + tools
-from langgraph.graph import StateGraph, START
+from langgraph.graph import StateGraph, START, END, MessagesState
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import tools_condition
 from langgraph.prebuilt.tool_node import ToolNode
-from langchain_community.tools.tavily_search import TavilySearchResults
+
 
 from prompt import REACT_SYSTEM_PROMPT
+from tools import query_course_schedule, get_tavily_tool
 
 # Load environment variables
 load_dotenv()
@@ -38,10 +37,6 @@ def initialize_session_state():
         st.session_state.messages = []
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = InMemoryChatMessageHistory()
-
-# LangGraph state
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
 
 @st.cache_resource
 def get_llm():
@@ -62,20 +57,23 @@ def get_llm():
 def get_graph():
     llm = get_llm()
 
-    # Tavily search tool
-    # Make sure TAVILY_API_KEY is set in your .env if you want search enabled
-    tavily_key = os.getenv("TAVILY_API_KEY", "")
-    tool = TavilySearchResults(max_results=2) if tavily_key else None
-    tools = [tool] if tool else []
+    # Initialize tools
+    tools = []
+    tavily = get_tavily_tool()
+    if tavily:
+        tools.append(tavily)
+    schedule_tool = query_course_schedule
+    if schedule_tool:
+        tools.append(schedule_tool)
 
     llm_with_tools = llm.bind_tools(tools) if tools else llm
 
-    def chatbot(state: State):
+    def chatbot(state: MessagesState):
         # Let the LLM decide whether to call tools
         result = llm_with_tools.invoke(state["messages"])
         return {"messages": [result]}
 
-    graph_builder = StateGraph(State)
+    graph_builder = StateGraph(MessagesState)
     graph_builder.add_node("chatbot", chatbot)
 
     if tools:
@@ -85,6 +83,7 @@ def get_graph():
         graph_builder.add_edge("tools", "chatbot")
 
     graph_builder.add_edge(START, "chatbot")
+    graph_builder.add_edge("chatbot", END)
     graph = graph_builder.compile()
     return graph
 
@@ -173,8 +172,6 @@ def main():
 
                         # Compose full message list for the graph
                         prior_msgs = [system_message] + st.session_state.chat_history.messages
-                        # Append the latest human turn explicitly to ensure it's included
-                        prior_msgs.append(HumanMessage(content=user_response))
 
                         # Run the graph
                         ai_text = invoke_graph(prior_msgs)
