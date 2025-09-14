@@ -1,0 +1,9 @@
+langchain==0.3
+langgraph==0.3
+langgraph-prebuilt
+langchain-openai
+langchain-community
+tavily-python
+openai
+mcp
+python-dotenv==1.0.0
